@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fluorescencia en piel — completo</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#0b1020; color:#e8eeff; }
+    .wrap { display:grid; grid-template-columns: 1fr 380px; gap:14px; padding:14px; height:100dvh; box-sizing:border-box; }
+    canvas{
+      display:block;
+      width:100%;
+      height:100%;
+      min-height:420px;
+      background: radial-gradient(1000px 600px at 60% 30%, #15214a 0%, #08102a 45%, #050a18 100%);
+      border-radius:14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .panel { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10); border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:10px; }
+    h1 { font-size:16px; margin:0; }
+    .row { display:grid; grid-template-columns: 1fr 140px; gap:10px; align-items:center; }
+    label { font-size:13px; opacity:.95; }
+    select, input[type="range"]{
+      width:100%;
+      background: rgba(0,0,0,.25);
+      border: 1px solid rgba(255,255,255,.12);
+      color:#e8eeff;
+      border-radius:10px;
+      padding:8px 10px;
+      outline: none;
+    }
+    .pill { font-variant-numeric: tabular-nums; font-size:12px; padding:6px 8px; background: rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.10); border-radius:10px; text-align:right; }
+
+    .switch { display:flex; align-items:center; gap:10px; justify-content:flex-end; }
+    .switch input { display:none; }
+    .track {
+      width:54px; height:30px; border-radius:999px; background: rgba(255,255,255,.14);
+      border:1px solid rgba(255,255,255,.18); position:relative; cursor:pointer; display:inline-block;
+    }
+    .knob {
+      width:24px; height:24px; border-radius:999px; position:absolute; top:2px; left:2px;
+      background: rgba(255,255,255,.80);
+      transition: all .18s ease;
+    }
+    .on .track { background: rgba(110,180,255,.25); }
+    .on .knob { left:28px; background: rgba(200,240,255,.92); }
+
+    .card { background: rgba(0,0,0,.20); border:1px solid rgba(255,255,255,.10); border-radius:14px; padding:10px; }
+    .small { font-size:12px; opacity:.88; line-height:1.45; }
+    svg { width:100%; height:210px; display:block; }
+
+    .btns { display:flex; gap:10px; }
+    button {
+      flex:1; padding:10px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.08); color:#e8eeff; cursor:pointer;
+    }
+    button:hover { background: rgba(255,255,255,.12); }
+
+    #err {
+      position: fixed; left: 14px; bottom: 14px;
+      max-width: 70vw; white-space: pre-wrap;
+      background: rgba(0,0,0,.70);
+      border: 1px solid rgba(255,120,120,.40);
+      color: rgba(255,220,220,.98);
+      padding: 10px 12px; border-radius: 12px;
+      font-size: 12px; line-height: 1.35;
+      display:none;
+      z-index: 9999;
+    }
+
+    /* -----------------------------
+       Responsive: móvil / pantallas angostas
+    -------------------------------- */
+    @media (max-width: 900px){
+      .wrap{
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(280px, 52vh) auto;
+        height: 100dvh;              /* mejor que 100vh en móvil */
+        padding: 10px;
+      }
+      canvas{
+        min-height: 280px;
+        height: 52vh;
+        border-radius: 14px;
+      }
+      .panel{
+        max-height: calc(100dvh - 52vh - 20px);
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;    
+      }
+    }
+
+    /* Extra: muy pequeño (teléfonos compactos) */
+    @media (max-width: 420px){
+      .wrap{
+        grid-template-rows: minmax(240px, 46vh) auto;
+      }
+      canvas{
+        height: 46vh;
+        min-height: 240px;
+      }
+      .row{
+        grid-template-columns: 1fr 120px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <canvas id="c"></canvas>
+
+    <div class="panel">
+      <h1>Fluorescencia cutánea (simulación)</h1>
+
+      <div class="row">
+        <label>Excitación</label>
+        <div class="switch" id="swWrap">
+          <span class="pill" id="swLabel">ON</span>
+          <input id="sw" type="checkbox" checked />
+          <label class="track" for="sw" aria-label="Switch excitación"><span class="knob"></span></label>
+        </div>
+      </div>
+
+      <div class="row">
+        <label>Molécula</label>
+        <select id="molecule">
+          <option value="NADH">NADH</option>
+          <option value="FAD">FAD</option>
+          <option value="LIPOF">Lipofuscina</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>Intensidad LED</label>
+        <div class="pill" id="vI">70%</div>
+      </div>
+      <input id="intensity" type="range" min="0" max="100" value="70" />
+
+      <div class="row">
+        <label>Densidad fluoróforo</label>
+        <div class="pill" id="vD">55%</div>
+      </div>
+      <input id="density" type="range" min="0" max="100" value="55" />
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline;">
+          <div style="font-size:13px; opacity:.95;">Espectro de emisión</div>
+          <div class="pill" id="peakPill">—</div>
+        </div>
+        <svg id="spec" viewBox="0 0 360 210" aria-label="Espectro"></svg>
+        <div class="small" id="desc"></div>
+      </div>
+
+      <div class="btns">
+        <button id="reset">Reset</button>
+        <button id="pause">Pausar</button>
+      </div>
+
+      <div class="small">
+        ON: aparece el pico + glow + flechas emitidas. OFF: desaparece el pico y no hay emisión.
+      </div>
+    </div>
+  </div>
+
+  <div id="err"></div>
+
+<script>
+(() => {
+  // ----------------------------
+  // Error overlay
+  // ----------------------------
+  const errBox = document.getElementById('err');
+  function showErr(e){
+    errBox.style.display = 'block';
+    errBox.textContent = (e && e.stack) ? e.stack : String(e);
+  }
+  window.addEventListener('error', (ev)=> showErr(ev.error || ev.message));
+  window.addEventListener('unhandledrejection', (ev)=> showErr(ev.reason));
+
+  // ----------------------------
+  // Canvas setup
+  // ----------------------------
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha:true });
+
+  function fit() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.max(2, Math.floor(rect.width  * dpr));
+    canvas.height = Math.max(2, Math.floor(rect.height * dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', ()=>{ fit(); resetAll(); });
+
+  // Geometry in CSS pixels (because transform handles DPR)
+  function geom() {
+    const w = canvas.getBoundingClientRect().width;
+    const h = canvas.getBoundingClientRect().height;
+    const skinY = h * 0.64;
+
+    // "LED" position
+    const emitterX = w * 0.20;
+    const emitterY = h * 0.14;
+
+    // beam edges on skin line
+    const leftX  = emitterX + w*0.12;
+    const rightX = emitterX + w*0.44;
+
+    // ✅ SENSOR (opuesto a la fuente, a la derecha)
+    const sW = w * 0.16;
+    const sH = h * 0.18;
+    const sX = w * 0.80;
+    const sY = h * 0.18;
+
+    return { w,h,skinY,emitterX,emitterY,leftX,rightX, sX,sY,sW,sH };
+  }
+
+  // ----------------------------
+  // UI
+  // ----------------------------
+  const ui = {
+    sw: document.getElementById('sw'),
+    swWrap: document.getElementById('swWrap'),
+    swLabel: document.getElementById('swLabel'),
+    molecule: document.getElementById('molecule'),
+    intensity: document.getElementById('intensity'),
+    density: document.getElementById('density'),
+    vI: document.getElementById('vI'),
+    vD: document.getElementById('vD'),
+    spec: document.getElementById('spec'),
+    peakPill: document.getElementById('peakPill'),
+    desc: document.getElementById('desc'),
+    reset: document.getElementById('reset'),
+    pause: document.getElementById('pause'),
+  };
+
+  const rand = (a,b)=>a + Math.random()*(b-a);
+  const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+
+  function setSwitchUI(on){
+    ui.swLabel.textContent = on ? "ON" : "OFF";
+    ui.swWrap.classList.toggle("on", on);
+  }
+
+  ui.sw.addEventListener('change', ()=>{
+    setSwitchUI(ui.sw.checked);
+    drawSpectrum();
+  });
+  setSwitchUI(ui.sw.checked);
+
+  ui.intensity.addEventListener('input', ()=> { ui.vI.textContent = ui.intensity.value + "%"; });
+  ui.density.addEventListener('input',   ()=> { ui.vD.textContent = ui.density.value + "%"; });
+  ui.vI.textContent = ui.intensity.value + "%";
+  ui.vD.textContent = ui.density.value + "%";
+
+  // ----------------------------
+  // Molecules (didactic peaks)
+  // ----------------------------
+  const MOLECULES = {
+    NADH:  { peak: 460, sigma: 22, label: "NADH",       explain: "Autofluorescencia asociada a metabolismo (didáctico)." },
+    FAD:   { peak: 525, sigma: 24, label: "FAD",        explain: "Autofluorescencia de flavinas (didáctico)." },
+    LIPOF: { peak: 600, sigma: 42, label: "Lipofuscina", explain: "Emisión amplia amarillo→rojo (didáctico)." },
+  };
+
+  // wavelength -> visible-ish RGBA (didactic)
+  function wlToRGBA(wl, alpha) {
+    const w = clamp(wl, 430, 650);
+    let r,g,b;
+    if (w < 500) { // blue->cyan
+      const t = (w-430)/(500-430);
+      r = Math.floor(lerp(90,  70, t));
+      g = Math.floor(lerp(150, 255, t));
+      b = Math.floor(lerp(255, 200, t));
+    } else { // green->red
+      const t = (w-500)/(650-500);
+      r = Math.floor(lerp( 90, 255, t));
+      g = Math.floor(lerp(255, 110, t));
+      b = Math.floor(lerp(120,  60, t));
+    }
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  // ----------------------------
+  // Beam containment
+  // ----------------------------
+  function pointInBeam(x, y) {
+    const { skinY, emitterX, emitterY, leftX, rightX } = geom();
+    if (y < emitterY || y > skinY + 90) return false;
+    const t = clamp((y - emitterY) / (skinY - emitterY), 0, 1);
+    const xL = lerp(emitterX, leftX, t);
+    const xR = lerp(emitterX, rightX, t);
+    return x >= xL && x <= xR;
+  }
+
+  function randomPointOnSkinWithinBeam(){
+    const { w, skinY } = geom();
+    for (let k=0;k<60;k++){
+      const x = rand(w*0.05, w*0.95);
+      const y = skinY + rand(5, 70);
+      if (pointInBeam(x,y)) return {x,y};
+    }
+    const { leftX, rightX } = geom();
+    return { x:(leftX+rightX)/2, y: skinY+30 };
+  }
+
+  // ----------------------------
+  // Wavy arrows
+  // ----------------------------
+  function drawWavyArrow(x1,y1,x2,y2,phase,amp,wavelength,color,alpha){
+    const dx=x2-x1, dy=y2-y1;
+    const L=Math.hypot(dx,dy) || 1;
+    const ux=dx/L, uy=dy/L;
+    const px=-uy, py=ux;
+
+    const steps = Math.max(14, Math.floor(L/10));
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    for (let i=0;i<=steps;i++){
+      const t=i/steps;
+      const s=t*L;
+      const w = Math.sin((2*Math.PI*(s/wavelength)) + phase);
+      const x = x1 + ux*s + px*(amp*w);
+      const y = y1 + uy*s + py*(amp*w);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // arrow head
+    const ax = x2, ay = y2;
+    const head = 10;
+    const angle = Math.atan2(dy, dx);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - head*Math.cos(angle - Math.PI/7), ay - head*Math.sin(angle - Math.PI/7));
+    ctx.lineTo(ax - head*Math.cos(angle + Math.PI/7), ay - head*Math.sin(angle + Math.PI/7));
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ----------------------------
+  // Emitted arrows (from skin)
+  // ----------------------------
+  class EmittedArrow {
+    // target: "free" | "sensor"
+    constructor(x,y,wl,baseAlpha,target="free"){
+      this.x=x; this.y=y;
+      this.wl=wl;
+      this.life = (target === "sensor") ? rand(1.8, 2.8) : rand(0.6, 1.1);
+      this.t = 0;
+      this.baseAlpha = baseAlpha;
+      this.target = target;
+
+      // ✅ si va al sensor, apunta hacia el centro del sensor con trayectoria diagonal
+      if (target === "sensor"){
+        const { sX,sY,sW,sH } = geom();
+        const tx = sX + sW*0.35 + rand(-10,10);
+        const ty = sY + sH*0.55 + rand(-10,10);
+        const dx = tx - x, dy = ty - y;
+        const L = Math.hypot(dx,dy) || 1;
+        const speed = rand(320, 520);
+        this.vx = (dx/L)*speed;
+        this.vy = (dy/L)*speed;
+      } else {
+        const ang = rand(-Math.PI*0.92, -Math.PI*0.08);
+        this.vx = Math.cos(ang)*rand(90, 150);
+        this.vy = Math.sin(ang)*rand(90, 150);
+      }
+
+      this.phase = rand(0, Math.PI*2);
+      this.amp = rand(4.0, 7.5);
+      this.wave = rand(22, 36);
+    }
+    step(dt){ this.t += dt; this.life -= dt; }
+    pos(){
+      return { x: this.x + this.vx*this.t, y: this.y + this.vy*this.t };
+    }
+    draw(){
+      const a = clamp(this.life, 0, 1) * this.baseAlpha;
+      const color = wlToRGBA(this.wl, 1.0);
+      const p2 = this.pos();
+      drawWavyArrow(this.x, this.y, p2.x, p2.y, this.phase + this.t*7.0, this.amp, this.wave, color, a);
+    }
+    dead(){ return this.life <= 0.02; }
+  }
+
+  // ----------------------------
+  // Hotspot = skin glow + heat red tint
+  // ----------------------------
+  class Hotspot {
+    constructor(x,y,str, wl, heat){
+      this.x=x; this.y=y;
+      this.wl=wl;
+      this.r = 26 + 44*str;
+      this.a = 0.12 + 0.38*str;
+      this.life = 1.0;
+
+      this.heat = heat; // 0..1 red tint
+      this.hr = 18 + 40*heat;
+      this.ha = 0.06 + 0.18*heat;
+    }
+    step(dt){
+      this.life -= dt;
+      this.a *= (1 - 1.15*dt);
+      this.r *= (1 - 0.15*dt);
+      this.ha *= (1 - 1.0*dt);
+      this.hr *= (1 - 0.12*dt);
+    }
+    draw(){
+      // Heat (red tint)
+      if (this.ha > 0.001){
+        const gh = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, this.hr);
+        gh.addColorStop(0, `rgba(255,80,60,${clamp(this.ha,0,0.25)})`);
+        gh.addColorStop(0.7, `rgba(255,60,50,${clamp(this.ha*0.35,0,0.18)})`);
+        gh.addColorStop(1, `rgba(255,60,50,0)`);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = gh;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.hr, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Fluorescent glow (emission color)
+      const a = clamp(this.a, 0, 0.75);
+      const g = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, this.r);
+      g.addColorStop(0, wlToRGBA(this.wl, a));
+      g.addColorStop(0.7, wlToRGBA(this.wl, a*0.28));
+      g.addColorStop(1, wlToRGBA(this.wl, 0));
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+    dead(){ return this.life<=0.02 || (this.a<=0.01 && this.ha<=0.004); }
+  }
+
+  // ----------------------------
+  // Spectrum plot (SVG)
+  // ----------------------------
+  function gaussian(x, mu, sigma){
+    const z = (x-mu)/sigma;
+    return Math.exp(-0.5*z*z);
+  }
+
+  function drawSpectrum(){
+    const mol = MOLECULES[ui.molecule.value];
+    const on = ui.sw.checked;
+
+    ui.peakPill.textContent = on ? `Pico: ${mol.peak} nm` : "—";
+    ui.desc.textContent = `${mol.label}: ${mol.explain} ${on ? "" : "(apagado)"}`;
+    ui.spec.innerHTML = "";
+
+    const W=360, H=210;
+    const padL=34, padR=10, padT=12, padB=28;
+    const xMin=420, xMax=680;
+
+    const axis = (d)=> {
+      const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d", d);
+      p.setAttribute("fill","none");
+      p.setAttribute("stroke","rgba(255,255,255,0.25)");
+      p.setAttribute("stroke-width","1");
+      return p;
+    };
+    ui.spec.appendChild(axis(`M ${padL} ${H-padB} L ${W-padR} ${H-padB}`));
+    ui.spec.appendChild(axis(`M ${padL} ${padT} L ${padL} ${H-padB}`));
+
+    const addText=(x,y,txt,op=0.65)=>{
+      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x",x); t.setAttribute("y",y);
+      t.setAttribute("fill",`rgba(255,255,255,${op})`);
+      t.setAttribute("font-size","11");
+      t.textContent=txt;
+      ui.spec.appendChild(t);
+    };
+    [450,500,550,600,650].forEach(v=>{
+      const tx = padL + (v-xMin)*(W-padL-padR)/(xMax-xMin);
+      const tick=document.createElementNS("http://www.w3.org/2000/svg","path");
+      tick.setAttribute("d",`M ${tx} ${H-padB} L ${tx} ${H-padB+6}`);
+      tick.setAttribute("stroke","rgba(255,255,255,0.22)");
+      ui.spec.appendChild(tick);
+      addText(tx-12, H-8, String(v), 0.55);
+    });
+    addText(8, 18, "I", 0.55);
+    addText(W-62, H-8, "λ (nm)", 0.55);
+
+    if (!on) return;
+
+    const N=180;
+    let maxY=0;
+    const pts=[];
+    for (let i=0;i<=N;i++){
+      const wl=xMin+(xMax-xMin)*i/N;
+      const y=gaussian(wl, mol.peak, mol.sigma);
+      pts.push({wl,y});
+      if (y>maxY) maxY=y;
+    }
+    let d="";
+    pts.forEach((p,i)=>{
+      const x = padL + (p.wl-xMin)*(W-padL-padR)/(xMax-xMin);
+      const yy = padT + (1 - (p.y/maxY))*(H-padT-padB);
+      d += (i===0 ? `M ${x} ${yy}` : ` L ${x} ${yy}`);
+    });
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke","rgba(200,240,255,0.85)");
+    path.setAttribute("stroke-width","2");
+    ui.spec.appendChild(path);
+
+    const px = padL + (mol.peak-xMin)*(W-padL-padR)/(xMax-xMin);
+    const vline=document.createElementNS("http://www.w3.org/2000/svg","path");
+    vline.setAttribute("d",`M ${px} ${padT} L ${px} ${H-padB}`);
+    vline.setAttribute("stroke","rgba(255,255,255,0.18)");
+    vline.setAttribute("stroke-dasharray","4 4");
+    ui.spec.appendChild(vline);
+
+    const dot=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    dot.setAttribute("cx", px);
+    dot.setAttribute("cy", padT+18);
+    dot.setAttribute("r", 5);
+    dot.setAttribute("fill", wlToRGBA(mol.peak, 0.95));
+    ui.spec.appendChild(dot);
+    addText(px+8, padT+22, `${mol.peak} nm`, 0.75);
+  }
+
+  // ----------------------------
+  // Scene drawing
+  // ----------------------------
+  function drawSkinBase(){
+    const { w,h,skinY } = geom();
+    const skinGrad = ctx.createLinearGradient(0, skinY, 0, h);
+    skinGrad.addColorStop(0, 'rgba(210,170,140,0.22)');
+    skinGrad.addColorStop(1, 'rgba(160,105,75,0.28)');
+    ctx.fillStyle = skinGrad;
+    ctx.fillRect(0, skinY, w, h-skinY);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, skinY);
+    ctx.lineTo(w, skinY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawIncomingBeam(I, on){
+    const { emitterX, emitterY, skinY, leftX, rightX } = geom();
+    const beamAlpha = on ? (0.22 + 0.55*I) : 0.14;
+
+    // cone fill
+    ctx.save();
+    ctx.globalAlpha = on ? (0.12 + 0.16*I) : 0.08;
+    ctx.beginPath();
+    ctx.fillStyle = "rgba(90,140,255,0.55)";
+    ctx.moveTo(emitterX, emitterY);
+    ctx.lineTo(rightX, skinY - 8);
+    ctx.lineTo(leftX,  skinY - 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // wavy arrows
+    const targets = [
+      {x: leftX, y: skinY-8},
+      {x: (leftX+rightX)/2, y: skinY-8},
+      {x: rightX, y: skinY-8}
+    ];
+    targets.forEach((t, idx)=>{
+      drawWavyArrow(
+        emitterX, emitterY,
+        t.x, t.y,
+        tClock*6.5 + idx*1.4,
+        5 + idx*1.2,
+        26 + idx*6,
+        "rgba(120,170,255,1.0)",
+        beamAlpha
+      );
+    });
+  }
+
+  function drawBroadSkinGlow(I, D, peakWl, on){
+    if (!on) return;
+    const { skinY, leftX, rightX } = geom();
+    const cx = (leftX + rightX) * 0.5;
+    const cy = skinY + 28;
+
+    const strength = clamp((0.15 + 0.85*I) * (0.10 + 0.90*D), 0, 1);
+    const baseA = 0.16 + 0.52*strength;
+    const rx = 200 + 270*strength;
+    const ry = 85 + 125*strength;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(cx, cy, 8, cx, cy, rx);
+    g.addColorStop(0, wlToRGBA(peakWl, baseA));
+    g.addColorStop(0.65, wlToRGBA(peakWl, baseA*0.25));
+    g.addColorStop(1, wlToRGBA(peakWl, 0));
+
+    ctx.fillStyle = g;
+    ctx.translate(cx, cy);
+    ctx.scale(1, ry/rx);
+    ctx.beginPath();
+    ctx.arc(0,0, rx, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ----------------------------
+  // ✅ SENSOR: dibujo + medición
+  // ----------------------------
+  const sensor = {
+    signal: 0,    // señal suavizada
+    max: 1e-6,    // máximo reciente para normalizar
+    wl: 520       // longitud de onda dominante (suavizada)
+  };
+
+  function pointInRect(px,py, r){
+    return px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h;
+  }
+
+  function drawSensorBox(){
+    const { sX,sY,sW,sH } = geom();
+
+    // base box
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(sX, sY, sW, sH, 14) : ctx.rect(sX,sY,sW,sH);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // glow by signal
+    const norm = clamp(sensor.signal / sensor.max, 0, 1);
+    const a = 0.10 + 0.65*norm;
+
+    const gx = sX + sW*0.5, gy = sY + sH*0.55;
+    const gr = ctx.createRadialGradient(gx,gy,6, gx,gy, sW*0.9);
+    gr.addColorStop(0, wlToRGBA(sensor.wl, a));
+    gr.addColorStop(1, wlToRGBA(sensor.wl, 0));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    ctx.arc(gx,gy, sW*0.65, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // labels
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.font = '13px system-ui';
+    ctx.fillText('SENSOR', sX + 12, sY + 20);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = '12px system-ui';
+    ctx.fillText(`Recibido: ${Math.round(norm*100)}%`, sX + 12, sY + 40);
+    ctx.fillText(`λ dom: ~${Math.round(sensor.wl)} nm`, sX + 12, sY + 58);
+    ctx.restore();
+  }
+
+  // ----------------------------
+  // Simulation loop
+  // ----------------------------
+  let running = true;
+  ui.pause.addEventListener('click', ()=>{
+    running = !running;
+    ui.pause.textContent = running ? "Pausar" : "Reanudar";
+  });
+
+  ui.reset.addEventListener('click', resetAll);
+
+  ui.molecule.addEventListener('change', ()=>{ drawSpectrum(); });
+
+  let hotspots = [];
+  let emitted = [];
+  let emitAcc = 0;
+  let tClock = 0;
+
+  function resetAll(){
+    hotspots = [];
+    emitted = [];
+    emitAcc = 0;
+    sensor.signal = 0;
+    sensor.max = 1e-6;
+    sensor.wl = MOLECULES[ui.molecule.value].peak;
+
+  }
+
+  let last = performance.now();
+
+  function tick(now){
+    try{
+      const dt = Math.min(0.033, (now-last)/1000);
+      last = now;
+      tClock += dt;
+
+      // params
+      const I = (+ui.intensity.value)/100;
+      const D = (+ui.density.value)/100;
+      const on = ui.sw.checked;
+      const mol = MOLECULES[ui.molecule.value];
+
+      // clear (use internal px; transform already set to DPR)
+      ctx.save();
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.restore();
+
+      // draw scene
+      drawIncomingBeam(I, on);
+      drawSkinBase();
+
+      // broad glow on skin (same color as emission)
+      drawBroadSkinGlow(I, D, mol.peak, on);
+
+      // ✅ sensor base (se repinta al final también)
+      drawSensorBox();
+
+      // hotspots (local glow + heat)
+      for (let i=hotspots.length-1;i>=0;i--){
+        hotspots[i].step(dt);
+        hotspots[i].draw();
+        if (hotspots[i].dead()) hotspots.splice(i,1);
+      }
+
+      // emission generation only when ON & running
+      if (on && running){
+        const emitRate = (8 + 46*I) * (0.2 + 0.8*D); // arrows/sec
+        emitAcc += emitRate * dt;
+
+        while (emitAcc >= 1){
+          const p = randomPointOnSkinWithinBeam();
+          const wl = clamp(mol.peak + rand(-mol.sigma*0.55, mol.sigma*0.55), 430, 650);
+
+          // strength
+          const strength = clamp((0.25 + 0.75*I) * (0.25 + 0.75*D), 0, 1);
+
+          // heat scales with intensity (subtle)
+          const heat = clamp(0.15 + 0.65*I, 0, 1) * 0.55;
+
+          hotspots.push(new Hotspot(p.x, p.y, strength, wl, heat));
+
+          // ✅ parte de la emisión viaja al sensor (diagonal)
+          const pToSensor = clamp(0.22 + 0.58*I, 0.22, 0.90);
+          const toSensor = (Math.random() < pToSensor);
+
+          emitted.push(
+            new EmittedArrow(
+              p.x, p.y, wl,
+              clamp(0.28 + 0.55*I, 0, 0.95),
+              toSensor ? "sensor" : "free"
+            )
+          );
+
+          emitAcc -= 1;
+        }
+      }
+
+      // ✅ medir señal en sensor (por flechas que entran al rectángulo)
+      const { sX,sY,sW,sH } = geom();
+      const rectS = { x:sX, y:sY, w:sW, h:sH };
+
+      let frameSignal = 0;
+      let frameWlWeighted = 0;
+
+      // draw emitted arrows (they still fade even if paused)
+      for (let i=emitted.length-1;i>=0;i--){
+        emitted[i].step(dt);
+        emitted[i].draw();
+
+        if (emitted[i].target === "sensor"){
+          const p2 = emitted[i].pos();
+          if (p2.x >= rectS.x - 12 && p2.x <= rectS.x + rectS.w + 12 && p2.y >= rectS.y - 12 && p2.y <=rectS.y + rectS.h + 12){
+            // energía "medida" proporcional al tiempo de vida e intensidad (didáctico)
+            const energy = clamp(emitted[i].life, 0, 1) * (0.2 + 0.8*I);
+            frameSignal += energy;
+            frameWlWeighted += energy * emitted[i].wl;
+            emitted.splice(i,1);
+            continue;
+          }
+        }
+
+        if (emitted[i].dead()) emitted.splice(i,1);
+      }
+
+      // suavizado (EMA) y normalización
+      const alpha = 0.12;
+      sensor.signal = (1-alpha)*sensor.signal + alpha*frameSignal;
+      if (frameSignal > 1e-9){
+        const dom = frameWlWeighted / frameSignal;
+        sensor.wl = (1-alpha)*sensor.wl + alpha*dom;
+      }
+      sensor.max = Math.max(sensor.max*0.996, sensor.signal, 1e-6);
+
+      // ✅ repinta sensor arriba para que el glow quede con la señal actual
+      drawSensorBox();
+
+      // status text
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.84)';
+      ctx.font = '14px system-ui';
+      ctx.fillText('Haz incidente (azul) + emisión (colores) + glow en piel + calor (rojo tenue) + sensor.', 16, 28);
+      ctx.fillText(`Intensidad=${Math.round(I*100)}%  Densidad=${Math.round(D*100)}%  Estado=${on?"ON":"OFF"}`, 16, 48);
+      ctx.restore();
+
+      requestAnimationFrame(tick);
+    } catch(e){
+      showErr(e);
+    }
+  }
+
+  function start(){
+    fit();
+    drawSpectrum();
+    resetAll();
+    requestAnimationFrame(tick);
+  }
+
+  // Start after layout is ready
+  window.addEventListener('load', start);
+
+})();
+</script>
+</body>
+</html>
